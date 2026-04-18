@@ -1,4 +1,4 @@
-package handler
+package ticker
 
 import (
 	"strings"
@@ -44,16 +44,16 @@ func TestFormatChange(t *testing.T) {
 func TestRenderSVGIncludesStatusAndRows(t *testing.T) {
 	view := tickerView{
 		Assets: []renderedAsset{
-			{Symbol: "GOLD", PriceText: "$ 4,854.60", ChangeText: "▲ +2.20%", ChangeFill: "#3FB950"},
-			{Symbol: "BTC", PriceText: "$ 77,285.42", ChangeText: "▲ +2.83%", ChangeFill: "#3FB950"},
-			{Symbol: "TSLA", PriceText: "$ 175.50", ChangeText: "▼ -1.20%", ChangeFill: "#F85149"},
-			{Symbol: "VTI", PriceText: "$ 280.15", ChangeText: "▲ +0.80%", ChangeFill: "#3FB950"},
+			{Symbol: "GOLD", PriceText: "$ 4,854.60", ChangeText: "▲ +2.20%", ChangeFill: "__positive__"},
+			{Symbol: "BTC", PriceText: "$ 77,285.42", ChangeText: "▲ +2.83%", ChangeFill: "__positive__"},
+			{Symbol: "TSLA", PriceText: "$ 175.50", ChangeText: "▼ -1.20%", ChangeFill: "__negative__"},
+			{Symbol: "VTI", PriceText: "$ 280.15", ChangeText: "▲ +0.80%", ChangeFill: "__positive__"},
 		},
 		StatusLine:      "# source status: live snapshot",
-		StatusLineFill:  "#8B949E",
+		StatusLineFill:  "__muted__",
 		RenderedAtLabel: "2026-04-17 12:30 UTC",
 	}
-	svg := renderSVG(view)
+	svg := RenderSVG(view, DarkTheme)
 
 	for _, symbol := range []string{"GOLD", "BTC", "TSLA", "VTI"} {
 		if !strings.Contains(svg, symbol) {
@@ -67,6 +67,25 @@ func TestRenderSVGIncludesStatusAndRows(t *testing.T) {
 
 	if !strings.Contains(svg, "# source status: live snapshot") {
 		t.Fatal("rendered svg missing status line")
+	}
+}
+
+func TestLightThemeUsesLightPalette(t *testing.T) {
+	view := tickerView{
+		Assets: []renderedAsset{
+			{Symbol: "BTC", PriceText: "$ 77,285.42", ChangeText: "▲ +2.83%", ChangeFill: "__positive__"},
+		},
+		StatusLine:      "# source status: live snapshot",
+		StatusLineFill:  "__muted__",
+		RenderedAtLabel: "2026-04-17 12:30 UTC",
+	}
+
+	svg := RenderSVG(view, LightTheme)
+	if !strings.Contains(svg, `fill="#FFFFFF"`) {
+		t.Fatal("light theme missing white background")
+	}
+	if !strings.Contains(svg, `fill="#1A7F37"`) {
+		t.Fatal("light theme missing green accent")
 	}
 }
 

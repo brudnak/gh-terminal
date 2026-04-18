@@ -6,13 +6,17 @@ The rendered header intentionally uses `terminal-ticker` and does not use `vai-t
 
 ## Sample Output
 
-The repository includes a generated sample SVG at [`examples/sample.svg`](/Users/andrewbrudnak/github.com/brudnak/gh-terminal/examples/sample.svg).
+The repository includes generated samples at [sample dark](/Users/andrewbrudnak/github.com/brudnak/gh-terminal/examples/sample.svg) and [sample light](/Users/andrewbrudnak/github.com/brudnak/gh-terminal/examples/sample-light.svg).
 
-![terminal-ticker sample](examples/sample.svg)
+![badge dark sample](examples/badge-dark.svg#gh-dark-mode-only)
+![badge light sample](examples/badge-light.svg#gh-light-mode-only)
+![terminal-ticker dark sample](examples/sample.svg#gh-dark-mode-only)
+![terminal-ticker light sample](examples/sample-light.svg#gh-light-mode-only)
 
 ## What it does
 
-- Exposes a Vercel serverless function from [`api/ticker.go`](/Users/andrewbrudnak/github.com/brudnak/gh-terminal/api/ticker.go)
+- Exposes a dark endpoint at [`api/ticker/index.go`](/Users/andrewbrudnak/github.com/brudnak/gh-terminal/api/ticker/index.go)
+- Exposes a light endpoint at [`api/ticker-light/index.go`](/Users/andrewbrudnak/github.com/brudnak/gh-terminal/api/ticker-light/index.go)
 - Returns `image/svg+xml`
 - Sets `Cache-Control: public, max-age=7200, s-maxage=7200`
 - Fetches market data concurrently with goroutines and `sync.WaitGroup`
@@ -34,8 +38,22 @@ Tracked assets:
 ```text
 .
 ├── api/
-│   ├── ticker.go
-│   └── ticker_test.go
+│   ├── ticker/
+│   │   └── index.go
+│   └── ticker-light/
+│       └── index.go
+├── internal/
+│   └── ticker/
+│       ├── ticker.go
+│       └── ticker_test.go
+├── cmd/
+│   └── render-sample/
+│       └── main.go
+├── examples/
+│   ├── badge-dark.svg
+│   ├── badge-light.svg
+│   ├── sample-light.svg
+│   └── sample.svg
 ├── go.mod
 ├── vercel.json
 └── README.md
@@ -79,6 +97,7 @@ Then open:
 
 - `http://localhost:3000/`
 - `http://localhost:3000/api/ticker`
+- `http://localhost:3000/api/ticker-light`
 
 Generate a fresh sample SVG in the repo:
 
@@ -106,6 +125,23 @@ or
 
 ```md
 ![terminal-ticker](https://your-project.vercel.app/api/ticker)
+```
+
+For GitHub theme-aware rendering, use both endpoints:
+
+```md
+![terminal-ticker dark](https://your-project.vercel.app/api/ticker#gh-dark-mode-only)
+![terminal-ticker light](https://your-project.vercel.app/api/ticker-light#gh-light-mode-only)
+```
+
+Badge + ticker stack for the profile README:
+
+```md
+![automated with Go on Vercel](https://raw.githubusercontent.com/brudnak/gh-terminal/main/examples/badge-dark.svg#gh-dark-mode-only)
+![automated with Go on Vercel](https://raw.githubusercontent.com/brudnak/gh-terminal/main/examples/badge-light.svg#gh-light-mode-only)
+
+![terminal-ticker dark](https://your-project.vercel.app/api/ticker#gh-dark-mode-only)
+![terminal-ticker light](https://your-project.vercel.app/api/ticker-light#gh-light-mode-only)
 ```
 
 ## Notes for the profile repo

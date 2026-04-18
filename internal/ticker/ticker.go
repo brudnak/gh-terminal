@@ -1,4 +1,4 @@
-package handler
+package ticker
 
 import (
 	"context"
@@ -18,10 +18,17 @@ import (
 )
 
 const (
-	contentTypeSVG = "image/svg+xml"
-	cacheControl   = "public, max-age=7200, s-maxage=7200"
+	ContentTypeSVG = "image/svg+xml"
+	CacheControl   = "public, max-age=7200, s-maxage=7200"
 	panelWidth     = 640
 	panelHeight    = 380
+)
+
+type Theme string
+
+const (
+	DarkTheme  Theme = "dark"
+	LightTheme Theme = "light"
 )
 
 type assetKind string
@@ -59,6 +66,26 @@ type tickerView struct {
 	RenderedAtLabel string
 }
 
+type palette struct {
+	SVGBackground   string
+	PanelBackground string
+	TitleBarFill    string
+	PanelStroke     string
+	HeaderText      string
+	MutedText       string
+	BodyText        string
+	PromptText      string
+	PositiveText    string
+	NegativeText    string
+	WarningText     string
+	DividerStroke   string
+	MacRed          string
+	MacYellow       string
+	MacGreen        string
+	GradientTop     string
+	GradientBottom  string
+}
+
 var trackedAssets = []assetSpec{
 	{Symbol: "GOLD", DisplayName: "Gold", Kind: assetMetal, TwelveDataSymbol: "XAU/USD"},
 	{Symbol: "BTC", DisplayName: "Bitcoin", Kind: assetCrypto, CoinGeckoID: "bitcoin"},
@@ -74,7 +101,7 @@ var httpClient = &http.Client{
 	Timeout: 8 * time.Second,
 }
 
-func Handler(w http.ResponseWriter, r *http.Request) {
+func ServeHTTP(w http.ResponseWriter, r *http.Request, theme Theme) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -82,10 +109,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := loadTickerView(r.Context(), time.Now().UTC())
-	svg := renderSVG(view)
+	svg := RenderSVG(view, theme)
 
-	w.Header().Set("Content-Type", contentTypeSVG)
-	w.Header().Set("Cache-Control", cacheControl)
+	w.Header().Set("Content-Type", ContentTypeSVG)
+	w.Header().Set("Cache-Control", CacheControl)
 	w.WriteHeader(http.StatusOK)
 
 	if r.Method == http.MethodHead {
@@ -93,6 +120,50 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _ = w.Write([]byte(svg))
+}
+
+func RenderSVG(view tickerView, theme Theme) string {
+	colors := paletteFor(theme)
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" role="img" aria-label="terminal-ticker live market feed">`, panelWidth, panelHeight, panelWidth, panelHeight))
+	b.WriteString(fmt.Sprintf(`<defs>
+  <linearGradient id="panel-bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%%" stop-color="%s"/>
+    <stop offset="100%%" stop-color="%s"/>
+  </linearGradient>
+</defs>`, colors.GradientTop, colors.GradientBottom))
+	b.WriteString(fmt.Sprintf(`<rect width="100%%" height="100%%" fill="%s"/>`, colors.SVGBackground))
+	b.WriteString(fmt.Sprintf(`<rect x="16" y="16" width="608" height="348" rx="12" fill="url(#panel-bg)" stroke="%s"/>`, colors.PanelStroke))
+	b.WriteString(fmt.Sprintf(`<rect x="16" y="16" width="608" height="34" rx="12" fill="%s"/>`, colors.TitleBarFill))
+	b.WriteString(fmt.Sprintf(`<rect x="16" y="38" width="608" height="326" fill="%s"/>`, colors.PanelBackground))
+	b.WriteString(fmt.Sprintf(`<circle cx="40" cy="33" r="5" fill="%s"/>`, colors.MacRed))
+	b.WriteString(fmt.Sprintf(`<circle cx="58" cy="33" r="5" fill="%s"/>`, colors.MacYellow))
+	b.WriteString(fmt.Sprintf(`<circle cx="76" cy="33" r="5" fill="%s"/>`, colors.MacGreen))
+	b.WriteString(fmt.Sprintf(`<g font-family="ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace" font-size="14" fill="%s">`, colors.BodyText))
+	b.WriteString(fmt.Sprintf(`<text x="44" y="84" fill="%s">[~]</text>`, colors.PromptText))
+	b.WriteString(fmt.Sprintf(`<text x="82" y="84" fill="%s">$</text>`, colors.BodyText))
+	b.WriteString(fmt.Sprintf(`<text x="100" y="84" fill="%s">./terminal-ticker --live</text>`, colors.HeaderText))
+	b.WriteString(fmt.Sprintf(`<text x="596" y="84" text-anchor="end" fill="%s">%s</text>`, colors.MutedText, escape(view.RenderedAtLabel)))
+	b.WriteString(fmt.Sprintf(`<line x1="40" y1="102" x2="600" y2="102" stroke="%s"/>`, colors.DividerStroke))
+	b.WriteString(fmt.Sprintf(`<text x="44" y="126" fill="%s">ASSET</text>`, colors.MutedText))
+	b.WriteString(fmt.Sprintf(`<text x="408" y="126" text-anchor="end" fill="%s">PRICE</text>`, colors.MutedText))
+	b.WriteString(fmt.Sprintf(`<text x="576" y="126" text-anchor="end" fill="%s">24H</text>`, colors.MutedText))
+	b.WriteString(fmt.Sprintf(`<line x1="40" y1="142" x2="600" y2="142" stroke="%s"/>`, colors.DividerStroke))
+
+	rowY := 166
+	for _, asset := range view.Assets {
+		b.WriteString(fmt.Sprintf(`<text x="44" y="%d" fill="%s">%s</text>`, rowY, colors.BodyText, escape(asset.Symbol)))
+		b.WriteString(fmt.Sprintf(`<text x="408" y="%d" text-anchor="end" fill="%s">%s</text>`, rowY, priceFill(asset.PriceText, colors), escape(asset.PriceText)))
+		b.WriteString(fmt.Sprintf(`<text x="576" y="%d" text-anchor="end" fill="%s">%s</text>`, rowY, resolveFill(asset.ChangeFill, colors), escape(asset.ChangeText)))
+		rowY += 24
+	}
+
+	b.WriteString(fmt.Sprintf(`<line x1="40" y1="340" x2="600" y2="340" stroke="%s"/>`, colors.DividerStroke))
+	b.WriteString(fmt.Sprintf(`<text x="44" y="362" fill="%s">%s</text>`, resolveFill(view.StatusLineFill, colors), escape(view.StatusLine)))
+	b.WriteString(`</g></svg>`)
+
+	return b.String()
 }
 
 func loadTickerView(ctx context.Context, now time.Time) tickerView {
@@ -162,19 +233,30 @@ func loadTickerView(ctx context.Context, now time.Time) tickerView {
 	}
 
 	statusLine := "# source status: live snapshot"
-	statusFill := "#8B949E"
 	if len(providerFailures) > 0 {
 		sort.Strings(providerFailures)
 		statusLine = fmt.Sprintf("# partial data: %s unavailable", strings.Join(providerFailures, ", "))
-		statusFill = "#D29922"
 	}
 
-	return tickerView{
+	view := tickerView{
 		Assets:          rendered,
 		StatusLine:      statusLine,
-		StatusLineFill:  statusFill,
 		RenderedAtLabel: now.Format("2006-01-02 15:04 UTC"),
 	}
+
+	return applyStatusTheme(view, providerFailures)
+}
+
+func applyStatusTheme(view tickerView, providerFailures []string) tickerView {
+	// The final status color depends on the endpoint theme, so we store a placeholder here
+	// and set the actual color in RenderSVG through theme-aware fill values.
+	if len(providerFailures) > 0 {
+		view.StatusLineFill = "__warning__"
+		return view
+	}
+
+	view.StatusLineFill = "__muted__"
+	return view
 }
 
 func fetchCryptoQuotes(ctx context.Context) (map[string]assetQuote, error) {
@@ -244,7 +326,6 @@ func fetchGoldQuote(ctx context.Context) (map[string]assetQuote, error) {
 		return quotes, nil
 	}
 
-	// Gold API gives us a no-auth fallback for price if the keyed provider is unavailable.
 	fallbackQuotes, fallbackErr := fetchGoldAPIQuote(ctx)
 	if fallbackErr == nil {
 		return fallbackQuotes, nil
@@ -407,47 +488,49 @@ func decodeJSON(data []byte, target any) error {
 	return json.Unmarshal(data, target)
 }
 
-func renderSVG(view tickerView) string {
-	var b strings.Builder
-
-	b.WriteString(fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" role="img" aria-label="terminal-ticker live market feed">`, panelWidth, panelHeight, panelWidth, panelHeight))
-	b.WriteString(`<defs>
-  <linearGradient id="panel-bg" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%" stop-color="#0D1117"/>
-    <stop offset="100%" stop-color="#0A0F14"/>
-  </linearGradient>
-</defs>`)
-	b.WriteString(`<rect width="100%" height="100%" fill="url(#panel-bg)"/>`)
-	b.WriteString(`<rect x="16" y="16" width="608" height="348" rx="12" fill="#0D1117" stroke="#30363D"/>`)
-	b.WriteString(`<rect x="16" y="16" width="608" height="34" rx="12" fill="#161B22"/>`)
-	b.WriteString(`<rect x="16" y="38" width="608" height="326" fill="#0D1117"/>`)
-	b.WriteString(`<circle cx="40" cy="33" r="5" fill="#F85149"/>`)
-	b.WriteString(`<circle cx="58" cy="33" r="5" fill="#D29922"/>`)
-	b.WriteString(`<circle cx="76" cy="33" r="5" fill="#3FB950"/>`)
-	b.WriteString(`<g font-family="ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace" font-size="14" fill="#C9D1D9">`)
-	b.WriteString(`<text x="44" y="84" fill="#3FB950">[~]</text>`)
-	b.WriteString(`<text x="82" y="84">$</text>`)
-	b.WriteString(`<text x="100" y="84">./terminal-ticker --live</text>`)
-	b.WriteString(fmt.Sprintf(`<text x="596" y="84" text-anchor="end" fill="#8B949E">%s</text>`, escape(view.RenderedAtLabel)))
-	b.WriteString(`<line x1="40" y1="102" x2="600" y2="102" stroke="#30363D"/>`)
-	b.WriteString(`<text x="44" y="126" fill="#8B949E">ASSET</text>`)
-	b.WriteString(`<text x="408" y="126" text-anchor="end" fill="#8B949E">PRICE</text>`)
-	b.WriteString(`<text x="576" y="126" text-anchor="end" fill="#8B949E">24H</text>`)
-	b.WriteString(`<line x1="40" y1="142" x2="600" y2="142" stroke="#30363D"/>`)
-
-	rowY := 166
-	for _, asset := range view.Assets {
-		b.WriteString(fmt.Sprintf(`<text x="44" y="%d">%s</text>`, rowY, escape(asset.Symbol)))
-		b.WriteString(fmt.Sprintf(`<text x="408" y="%d" text-anchor="end" fill="%s">%s</text>`, rowY, priceFill(asset.PriceText), escape(asset.PriceText)))
-		b.WriteString(fmt.Sprintf(`<text x="576" y="%d" text-anchor="end" fill="%s">%s</text>`, rowY, asset.ChangeFill, escape(asset.ChangeText)))
-		rowY += 24
+func paletteFor(theme Theme) palette {
+	switch theme {
+	case LightTheme:
+		return palette{
+			SVGBackground:   "#FFFFFF",
+			PanelBackground: "#FFFFFF",
+			TitleBarFill:    "#F6F8FA",
+			PanelStroke:     "#D0D7DE",
+			HeaderText:      "#1F2328",
+			MutedText:       "#57606A",
+			BodyText:        "#24292F",
+			PromptText:      "#1A7F37",
+			PositiveText:    "#1A7F37",
+			NegativeText:    "#CF222E",
+			WarningText:     "#9A6700",
+			DividerStroke:   "#D8DEE4",
+			MacRed:          "#FF5F57",
+			MacYellow:       "#FEBC2E",
+			MacGreen:        "#28C840",
+			GradientTop:     "#FFFFFF",
+			GradientBottom:  "#F6F8FA",
+		}
+	default:
+		return palette{
+			SVGBackground:   "#0D1117",
+			PanelBackground: "#0D1117",
+			TitleBarFill:    "#161B22",
+			PanelStroke:     "#30363D",
+			HeaderText:      "#C9D1D9",
+			MutedText:       "#8B949E",
+			BodyText:        "#C9D1D9",
+			PromptText:      "#3FB950",
+			PositiveText:    "#3FB950",
+			NegativeText:    "#F85149",
+			WarningText:     "#D29922",
+			DividerStroke:   "#30363D",
+			MacRed:          "#F85149",
+			MacYellow:       "#D29922",
+			MacGreen:        "#3FB950",
+			GradientTop:     "#0D1117",
+			GradientBottom:  "#0A0F14",
+		}
 	}
-
-	b.WriteString(`<line x1="40" y1="340" x2="600" y2="340" stroke="#30363D"/>`)
-	b.WriteString(fmt.Sprintf(`<text x="44" y="362" fill="%s">%s</text>`, view.StatusLineFill, escape(view.StatusLine)))
-	b.WriteString(`</g></svg>`)
-
-	return b.String()
 }
 
 func formatPrice(value *float64) string {
@@ -468,16 +551,16 @@ func formatPrice(value *float64) string {
 
 func formatChange(value *float64) (string, string) {
 	if value == nil {
-		return "N/A", "#8B949E"
+		return "N/A", "__muted__"
 	}
 
 	switch {
 	case *value > 0:
-		return fmt.Sprintf("▲ +%.2f%%", *value), "#3FB950"
+		return fmt.Sprintf("▲ +%.2f%%", *value), "__positive__"
 	case *value < 0:
-		return fmt.Sprintf("▼ %.2f%%", *value), "#F85149"
+		return fmt.Sprintf("▼ %.2f%%", *value), "__negative__"
 	default:
-		return "• +0.00%", "#8B949E"
+		return "• +0.00%", "__muted__"
 	}
 }
 
@@ -537,11 +620,26 @@ func addCommas(raw string) string {
 	return b.String()
 }
 
-func priceFill(text string) string {
+func priceFill(text string, colors palette) string {
 	if text == "N/A" {
-		return "#8B949E"
+		return colors.MutedText
 	}
-	return "#C9D1D9"
+	return colors.BodyText
+}
+
+func resolveFill(token string, colors palette) string {
+	switch token {
+	case "__positive__":
+		return colors.PositiveText
+	case "__negative__":
+		return colors.NegativeText
+	case "__warning__":
+		return colors.WarningText
+	case "__muted__":
+		return colors.MutedText
+	default:
+		return token
+	}
 }
 
 func parseNumericString(raw string) (*float64, error) {
