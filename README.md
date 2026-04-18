@@ -42,7 +42,7 @@ Tracked assets:
 │   │   └── index.go
 │   └── ticker-light/
 │       └── index.go
-├── internal/
+├── pkg/
 │   └── ticker/
 │       ├── ticker.go
 │       └── ticker_test.go

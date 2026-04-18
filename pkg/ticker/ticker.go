@@ -248,8 +248,6 @@ func loadTickerView(ctx context.Context, now time.Time) tickerView {
 }
 
 func applyStatusTheme(view tickerView, providerFailures []string) tickerView {
-	// The final status color depends on the endpoint theme, so we store a placeholder here
-	// and set the actual color in RenderSVG through theme-aware fill values.
 	if len(providerFailures) > 0 {
 		view.StatusLineFill = "__warning__"
 		return view

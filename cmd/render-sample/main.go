@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/brudnak/gh-terminal/internal/ticker"
+	"github.com/brudnak/gh-terminal/pkg/ticker"
 )
 
 func main() {
